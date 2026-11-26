@@ -1,6 +1,6 @@
 # Zadání pro agenta: konvertor Demon’s Souls PS5 saveů
 
-Vytvoř bezpečný CLI nástroj v **Pythonu 3, pouze se standardní knihovnou**, který převede neúplný save Demon’s Souls Remake (`PPSA01341`) obsahující dešifrované soubory `USR-DATA` do kompletní struktury použitelné v **KytyPS5**.
+Vytvoř bezpečný CLI nástroj v **Pythonu 3, pouze se standardní knihovnou**, který převede neúplný save Demon’s Souls Remake (`PPSA01341`) obsahující dešifrované soubory `USR-DATA` **z KytyPS5 do kompletní struktury použitelné v nativním PC portu**.
 
 ## Rozsah
 
@@ -220,7 +220,7 @@ OptionsProfile: 48
 
 Referenční `icon0.png` má 531349 bajtů a u obou profilů je shodná. Nástroj má kopírovat skutečný referenční soubor, ne velikost generovat nulami.
 
-## Pozorovaný formát `param.bin` pro KytyPS5
+## Pozorovaný formát `param.bin` pro nativní PC port
 
 Toto není standardní PS4 `PARAM.SFO`. Je to jednoduchá struktura o délce **1328 bajtů (`0x530`)**:
 

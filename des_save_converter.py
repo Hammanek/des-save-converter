@@ -1,4 +1,4 @@
-"""Safe conversion of decrypted Demon's Souls saves for KytyPS5."""
+"""Safe conversion of decrypted Demon's Souls saves from KytyPS5 to native PC."""
 
 import argparse
 from dataclasses import dataclass

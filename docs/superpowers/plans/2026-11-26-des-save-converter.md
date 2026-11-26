@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship a safe one-click Windows GUI that wraps decrypted Demon's Souls `USR-DATA` files in the complete KytyPS5 save structure.
+**Goal:** Ship a safe one-click Windows GUI that converts decrypted Demon's Souls `USR-DATA` files from KytyPS5 into the complete native PC port save structure.
 
 **Architecture:** A dependency-free Python conversion library validates and copies the game data, reads character metadata and stages a complete output directory before atomically publishing it. A small Tkinter GUI calls that library; unittest covers conversion and failure paths and PyInstaller produces the standalone release executable.
 

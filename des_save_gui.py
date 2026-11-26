@@ -34,7 +34,7 @@ class ConverterApp(tk.Tk):
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(1, weight=1)
 
-        ttk.Label(frame, text="Demon’s Souls — KytyPS5 save converter", font=("Segoe UI", 13, "bold")).grid(
+        ttk.Label(frame, text="Demon’s Souls — KytyPS5 to native PC save converter", font=("Segoe UI", 13, "bold")).grid(
             row=0, column=0, columnspan=3, sticky="w", pady=(0, 16)
         )
         self._path_row(frame, 1, "Incomplete save:", self.input_var, self._choose_input)

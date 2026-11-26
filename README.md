@@ -1,6 +1,6 @@
 # DeS Save Converter
 
-A simple Windows tool that converts an incomplete **Demon’s Souls Remake (PPSA01341)** save into the complete save structure for **KytyPS5**. It adds the missing `sce_sys` metadata without changing game progress.
+A simple Windows tool that converts an incomplete **Demon’s Souls Remake (PPSA01341)** save **from KytyPS5 to the native PC port**. It adds the missing `sce_sys` metadata without changing game progress.
 
 > The tool only works with already-decrypted `USR-DATA` files. It does not encrypt, decrypt, or re-sign PS5 saves.
 
@@ -13,7 +13,7 @@ A simple Windows tool that converts an incomplete **Demon’s Souls Remake (PPSA
    - **Working reference** — another working save from the same game that has complete `sce_sys` folders.
    - **Output folder** — a new or empty folder for the converted save.
 4. Click **Convert save**.
-5. Use the completed output folder as `PPSA01341` in your KytyPS5 save data.
+5. Use the completed output folder as `PPSA01341` in your native PC port save data.
 
 The reference supplies only the icon, block sizes, and metadata templates. The output `param.bin` is generated from the actual character name, class, and Soul Level in the input save.
 
@@ -57,7 +57,7 @@ PPSA01341_converted/
 
 ## Limitations
 
-- Supports the observed `USR-DATA` version 7 and the `param.bin` layout used by KytyPS5.
+- Supports the observed `USR-DATA` version 7 and the `param.bin` layout used by the native PC port.
 - Unknown location and playtime are not invented for generated metadata.
 - The tool does not handle save encryption, PSN account ownership, or transfers between accounts.
 - File validation is not a substitute for loading the save in the game. Game and emulator compatibility is outside the tool’s scope.
