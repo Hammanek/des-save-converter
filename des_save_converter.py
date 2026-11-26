@@ -153,8 +153,10 @@ def read_character(data: bytes) -> Character:
     if class_id not in CLASSES:
         raise ConversionError(f"Unknown character class {class_id}.")
     stats = [int.from_bytes(values[stat], "little") for stat in STATS]
+    if any(stat < 1 or stat > 99 for stat in stats):
+        raise ConversionError("Character statistics must be between 1 and 99.")
     soul_level = sum(stats) - 80
-    if soul_level < 1:
+    if soul_level < 1 or soul_level > 712:
         raise ConversionError(f"Implausible Soul Level {soul_level}; character stats are invalid.")
     return Character(name, class_id, CLASSES[class_id], soul_level)
 
@@ -173,9 +175,13 @@ def _required_file(root: Path, relative: str, label: str) -> Path:
 
 def _read_input_profile(root: Path, profile: str) -> bytes:
     path = _required_file(root, f"{profile}/USR-DATA", "input")
-    data = path.read_bytes()
     try:
+        data = path.read_bytes()
         validate_usr_data(data)
+        for _field in _iter_fields(data):
+            pass
+    except OSError as error:
+        raise ConversionError(f"Could not read {path}: {error}") from error
     except ConversionError as error:
         raise ConversionError(f"{profile}/USR-DATA: {error}") from error
     return data
@@ -184,7 +190,10 @@ def _read_input_profile(root: Path, profile: str) -> bytes:
 def _reference_param(reference: Path, profile: str) -> bytes:
     relative = f"{profile}/sce_sys/param.bin"
     path = _required_file(reference, relative, "reference")
-    data = path.read_bytes()
+    try:
+        data = path.read_bytes()
+    except OSError as error:
+        raise ConversionError(f"Could not read {path}: {error}") from error
     if len(data) != 0x530 or not data.startswith(b"Demon's Souls\0"):
         raise ConversionError(f"Unsupported reference param.bin format: {path}")
     return data
@@ -206,8 +215,9 @@ def _make_player_param(template: bytes, character: Character) -> bytes:
 def convert_save(input_dir: Path, reference_dir: Path, output_dir: Path) -> Character:
     input_dir, reference_dir, output_dir = map(Path, (input_dir, reference_dir, output_dir))
     source_paths = {path.resolve() for path in (input_dir, reference_dir)}
-    if output_dir.resolve() in source_paths:
-        raise ConversionError("The output directory must differ from input and reference.")
+    resolved_output = output_dir.resolve()
+    if any(resolved_output.is_relative_to(source) for source in source_paths):
+        raise ConversionError("The output directory cannot overlap input or reference.")
     if output_dir.exists() and (
         not output_dir.is_dir() or any(output_dir.iterdir())
     ):
@@ -221,8 +231,11 @@ def convert_save(input_dir: Path, reference_dir: Path, output_dir: Path) -> Char
         for filename in ("blocks", "icon0.png"):
             _required_file(reference_dir, f"{profile}/sce_sys/{filename}", "reference")
 
-    output_dir.parent.mkdir(parents=True, exist_ok=True)
-    staging = Path(tempfile.mkdtemp(prefix=f"{output_dir.name}.tmp-", dir=output_dir.parent))
+    try:
+        output_dir.parent.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix=f"{output_dir.name}.tmp-", dir=output_dir.parent))
+    except OSError as error:
+        raise ConversionError(f"Could not prepare output directory {output_dir}: {error}") from error
     try:
         for profile in PROFILES:
             (staging / profile).mkdir()
@@ -263,7 +276,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         character = convert_save(args.input, args.reference, args.output)
-    except ConversionError as error:
+    except (ConversionError, OSError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
     print(

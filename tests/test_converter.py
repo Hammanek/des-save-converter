@@ -132,6 +132,14 @@ class CharacterTests(unittest.TestCase):
         data = make_usr(blobs + make_player()[16:])
         self.assertEqual(read_character(data).name, "mobus")
 
+    def test_statistics_above_99_are_rejected(self):
+        for value in (100, 0xFFFFFFFF):
+            with self.subTest(value=value), self.assertRaisesRegex(ConversionError, "statistics"):
+                read_character(make_player(stats=(value, 13, 13, 16, 11, 11, 12, 8)))
+
+    def test_soul_level_712_is_accepted(self):
+        self.assertEqual(read_character(make_player(stats=(99,) * 8)).soul_level, 712)
+
 
 PROFILES = ("SAVEDATA0PlayerProfile0", "SAVEDATA0OptionsProfile0")
 
@@ -147,7 +155,8 @@ def populate_input(root):
     for profile in PROFILES:
         (root / profile).mkdir(parents=True)
     (root / PROFILES[0] / "USR-DATA").write_bytes(make_player())
-    (root / PROFILES[1] / "USR-DATA").write_bytes(make_usr(b"options"))
+    valid_options = make_usr(struct.pack("<IBI", 0x12345678, 0x08, 1))
+    (root / PROFILES[1] / "USR-DATA").write_bytes(valid_options)
 
 
 def populate_reference(root):
@@ -226,6 +235,21 @@ class ConversionTests(unittest.TestCase):
             convert_save(self.input, self.reference, self.output)
         self.assertFalse(self.output.exists())
 
+    def test_structurally_invalid_options_are_rejected_without_output(self):
+        options = self.input / PROFILES[1] / "USR-DATA"
+        options.write_bytes(make_usr(b"options"))
+        with self.assertRaisesRegex(ConversionError, PROFILES[1]):
+            convert_save(self.input, self.reference, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_output_nested_under_input_or_reference_is_rejected(self):
+        for source in (self.input, self.reference):
+            nested_output = source / "converted"
+            with self.subTest(source=source.name):
+                with self.assertRaisesRegex(ConversionError, "overlap"):
+                    convert_save(self.input, self.reference, nested_output)
+                self.assertFalse(nested_output.exists())
+
     def test_nonempty_output_is_never_overwritten(self):
         self.output.mkdir()
         sentinel = self.output / "keep.txt"
@@ -260,6 +284,28 @@ class CliTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("mobus", result.stdout)
             self.assertIn("Knight", result.stdout)
+
+    def test_cli_reports_destination_parent_error_without_traceback(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, reference = root / "input", root / "reference"
+            populate_input(source)
+            populate_reference(reference)
+            blocking_file = root / "not-a-directory"
+            blocking_file.write_text("keep", encoding="utf-8")
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve().parents[1] / "des_save_converter.py"),
+                    "--input", str(source), "--reference", str(reference),
+                    "--output", str(blocking_file / "output"),
+                ],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Error:", result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertEqual(blocking_file.read_text(encoding="utf-8"), "keep")
 
 
 if __name__ == "__main__":
