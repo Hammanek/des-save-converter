@@ -1,7 +1,12 @@
 """Safe conversion of decrypted Demon's Souls saves for KytyPS5."""
 
+import argparse
 from dataclasses import dataclass
+from pathlib import Path
+import shutil
 import struct
+import sys
+import tempfile
 
 
 class ConversionError(Exception):
@@ -50,6 +55,7 @@ FIXED_SIZES = {
     0x08: 4, 0x0A: 4, 0x0C: 1, 0x0F: 16,
 }
 BLOB_KEYS = {
+    0xFB0FAEB2, 0x739273B8, 0x639244AA,
     0x522AD995, 0x0AF4946A, 0x78A5C2D7, 0xB98A1BFF,
     0xE56C5A97, 0x2B87B29A, 0x94A8D348, 0x6D87F588,
 }
@@ -151,3 +157,121 @@ def read_character(data: bytes) -> Character:
     if soul_level < 1:
         raise ConversionError(f"Implausible Soul Level {soul_level}; character stats are invalid.")
     return Character(name, class_id, CLASSES[class_id], soul_level)
+
+
+PLAYER_PROFILE = "SAVEDATA0PlayerProfile0"
+OPTIONS_PROFILE = "SAVEDATA0OptionsProfile0"
+PROFILES = (PLAYER_PROFILE, OPTIONS_PROFILE)
+
+
+def _required_file(root: Path, relative: str, label: str) -> Path:
+    path = root / relative
+    if not path.is_file():
+        raise ConversionError(f"Required {label} file is missing: {path}")
+    return path
+
+
+def _read_input_profile(root: Path, profile: str) -> bytes:
+    path = _required_file(root, f"{profile}/USR-DATA", "input")
+    data = path.read_bytes()
+    try:
+        validate_usr_data(data)
+    except ConversionError as error:
+        raise ConversionError(f"{profile}/USR-DATA: {error}") from error
+    return data
+
+
+def _reference_param(reference: Path, profile: str) -> bytes:
+    relative = f"{profile}/sce_sys/param.bin"
+    path = _required_file(reference, relative, "reference")
+    data = path.read_bytes()
+    if len(data) != 0x530 or not data.startswith(b"Demon's Souls\0"):
+        raise ConversionError(f"Unsupported reference param.bin format: {path}")
+    return data
+
+
+def _make_player_param(template: bytes, character: Character) -> bytes:
+    subtitle = f"Player - {character.name}".encode("utf-8")
+    detail = f"Soul Level {character.soul_level} {character.class_name}".encode("utf-8")
+    if len(subtitle) > 0x7F or len(detail) > 0x3FF:
+        raise ConversionError("Character details are too long for param.bin.")
+    result = bytearray(template)
+    result[0x80:0x100] = bytes(0x80)
+    result[0x100:0x500] = bytes(0x400)
+    result[0x80:0x80 + len(subtitle)] = subtitle
+    result[0x100:0x100 + len(detail)] = detail
+    return bytes(result)
+
+
+def convert_save(input_dir: Path, reference_dir: Path, output_dir: Path) -> Character:
+    input_dir, reference_dir, output_dir = map(Path, (input_dir, reference_dir, output_dir))
+    source_paths = {path.resolve() for path in (input_dir, reference_dir)}
+    if output_dir.resolve() in source_paths:
+        raise ConversionError("The output directory must differ from input and reference.")
+    if output_dir.exists() and (
+        not output_dir.is_dir() or any(output_dir.iterdir())
+    ):
+        raise ConversionError(f"The output directory is not empty: {output_dir}")
+
+    input_data = {profile: _read_input_profile(input_dir, profile) for profile in PROFILES}
+    character = read_character(input_data[PLAYER_PROFILE])
+    reference_params = {profile: _reference_param(reference_dir, profile) for profile in PROFILES}
+    player_param = _make_player_param(reference_params[PLAYER_PROFILE], character)
+    for profile in PROFILES:
+        for filename in ("blocks", "icon0.png"):
+            _required_file(reference_dir, f"{profile}/sce_sys/{filename}", "reference")
+
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f"{output_dir.name}.tmp-", dir=output_dir.parent))
+    try:
+        for profile in PROFILES:
+            (staging / profile).mkdir()
+            shutil.copy2(input_dir / profile / "USR-DATA", staging / profile / "USR-DATA")
+            (staging / profile / "sce_sys").mkdir()
+            for filename in ("blocks", "icon0.png"):
+                source = reference_dir / profile / "sce_sys" / filename
+                shutil.copy2(source, staging / profile / "sce_sys" / filename)
+        shutil.copy2(
+            reference_dir / OPTIONS_PROFILE / "sce_sys" / "param.bin",
+            staging / OPTIONS_PROFILE / "sce_sys" / "param.bin",
+        )
+        (staging / PLAYER_PROFILE / "sce_sys" / "param.bin").write_bytes(player_param)
+
+        for profile in PROFILES:
+            converted = (staging / profile / "USR-DATA").read_bytes()
+            if converted != input_data[profile]:
+                raise ConversionError(f"Output verification failed for {profile}/USR-DATA.")
+            validate_usr_data(converted)
+        if output_dir.exists():
+            if any(output_dir.iterdir()):
+                raise ConversionError(f"The output directory became non-empty: {output_dir}")
+            output_dir.rmdir()
+        staging.replace(output_dir)
+    except Exception as error:
+        shutil.rmtree(staging, ignore_errors=True)
+        if isinstance(error, ConversionError):
+            raise
+        raise ConversionError(f"Conversion failed: {error}") from error
+    return character
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--input", required=True, type=Path, help="Incomplete save directory")
+    parser.add_argument("--reference", required=True, type=Path, help="Known-good save directory")
+    parser.add_argument("--output", required=True, type=Path, help="New or empty output directory")
+    args = parser.parse_args()
+    try:
+        character = convert_save(args.input, args.reference, args.output)
+    except ConversionError as error:
+        print(f"Error: {error}", file=sys.stderr)
+        return 1
+    print(
+        f"Converted {character.name} ({character.class_name}, Soul Level "
+        f"{character.soul_level}) to {args.output}"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

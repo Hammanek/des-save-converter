@@ -1,7 +1,20 @@
+import hashlib
+from pathlib import Path
+import shutil
 import struct
+import subprocess
+import sys
+import tempfile
 import unittest
+from unittest.mock import patch
 
-from des_save_converter import ConversionError, fnv1a32, read_character, validate_usr_data
+from des_save_converter import (
+    ConversionError,
+    convert_save,
+    fnv1a32,
+    read_character,
+    validate_usr_data,
+)
 
 
 FIELDS = {
@@ -110,6 +123,143 @@ class CharacterTests(unittest.TestCase):
         data = make_usr(struct.pack("<IB", 0x12345678, 0xFF) + b"\0" * 9)
         with self.assertRaisesRegex(ConversionError, "field type"):
             read_character(data)
+
+    def test_known_blob_fields_do_not_desynchronize_character_parser(self):
+        blobs = b"".join(
+            struct.pack("<IBB", key, 0x0E, 4) + b"blob"
+            for key in (0xFB0FAEB2, 0x739273B8, 0x639244AA)
+        )
+        data = make_usr(blobs + make_player()[16:])
+        self.assertEqual(read_character(data).name, "mobus")
+
+
+PROFILES = ("SAVEDATA0PlayerProfile0", "SAVEDATA0OptionsProfile0")
+
+
+def make_param():
+    data = bytearray(0x530)
+    title = b"Demon's Souls\0"
+    data[:len(title)] = title
+    return bytes(data)
+
+
+def populate_input(root):
+    for profile in PROFILES:
+        (root / profile).mkdir(parents=True)
+    (root / PROFILES[0] / "USR-DATA").write_bytes(make_player())
+    (root / PROFILES[1] / "USR-DATA").write_bytes(make_usr(b"options"))
+
+
+def populate_reference(root):
+    populate_input(root)
+    for index, profile in enumerate(PROFILES):
+        sys_dir = root / profile / "sce_sys"
+        sys_dir.mkdir()
+        (sys_dir / "param.bin").write_bytes(make_param())
+        (sys_dir / "icon0.png").write_bytes(b"\x89PNG\r\n\x1a\n" + bytes([index]))
+        (sys_dir / "blocks").write_bytes(struct.pack("<Q", 96 if index == 0 else 48))
+
+
+class ConversionTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.input = self.root / "input"
+        self.reference = self.root / "reference"
+        populate_input(self.input)
+        populate_reference(self.reference)
+        self.output = self.root / "output"
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_creates_complete_save_without_modifying_game_data(self):
+        character = convert_save(self.input, self.reference, self.output)
+        expected = {
+            Path(profile) / name
+            for profile in PROFILES
+            for name in ("USR-DATA", "sce_sys/blocks", "sce_sys/icon0.png", "sce_sys/param.bin")
+        }
+        actual = {
+            path.relative_to(self.output)
+            for path in self.output.rglob("*") if path.is_file()
+        }
+        self.assertEqual(actual, expected)
+        self.assertEqual((character.name, character.class_name, character.soul_level), ("mobus", "Knight", 18))
+        for profile in PROFILES:
+            original = (self.input / profile / "USR-DATA").read_bytes()
+            converted = (self.output / profile / "USR-DATA").read_bytes()
+            self.assertEqual(hashlib.sha256(converted).digest(), hashlib.sha256(original).digest())
+            for filename in ("blocks", "icon0.png"):
+                self.assertEqual(
+                    (self.output / profile / "sce_sys" / filename).read_bytes(),
+                    (self.reference / profile / "sce_sys" / filename).read_bytes(),
+                )
+        self.assertEqual(
+            (self.output / PROFILES[1] / "sce_sys" / "param.bin").read_bytes(),
+            (self.reference / PROFILES[1] / "sce_sys" / "param.bin").read_bytes(),
+        )
+
+    def test_player_param_contains_only_converted_character_details(self):
+        convert_save(self.input, self.reference, self.output)
+        param = (self.output / PROFILES[0] / "sce_sys" / "param.bin").read_bytes()
+        self.assertEqual(len(param), 0x530)
+        self.assertEqual(param[0x80:0x100].split(b"\0", 1)[0], b"Player - mobus")
+        self.assertEqual(param[0x100:0x500].split(b"\0", 1)[0], b"Soul Level 18 Knight")
+
+    def test_missing_input_is_rejected_without_output(self):
+        (self.input / PROFILES[0] / "USR-DATA").unlink()
+        with self.assertRaisesRegex(ConversionError, "USR-DATA"):
+            convert_save(self.input, self.reference, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_missing_reference_asset_is_rejected_without_output(self):
+        (self.reference / PROFILES[0] / "sce_sys" / "icon0.png").unlink()
+        with self.assertRaisesRegex(ConversionError, "reference"):
+            convert_save(self.input, self.reference, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_unsupported_reference_param_is_rejected(self):
+        param_path = self.reference / PROFILES[0] / "sce_sys" / "param.bin"
+        param_path.write_bytes(b"not a supported param")
+        with self.assertRaisesRegex(ConversionError, "param.bin"):
+            convert_save(self.input, self.reference, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_nonempty_output_is_never_overwritten(self):
+        self.output.mkdir()
+        sentinel = self.output / "keep.txt"
+        sentinel.write_text("important", encoding="utf-8")
+        with self.assertRaisesRegex(ConversionError, "output"):
+            convert_save(self.input, self.reference, self.output)
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "important")
+
+    def test_copy_failure_leaves_no_output_or_staging_directory(self):
+        with patch("des_save_converter.shutil.copy2", side_effect=OSError("disk full")):
+            with self.assertRaisesRegex(ConversionError, "disk full"):
+                convert_save(self.input, self.reference, self.output)
+        self.assertFalse(self.output.exists())
+        self.assertEqual(list(self.root.glob("output.tmp-*")), [])
+
+
+class CliTests(unittest.TestCase):
+    def test_cli_converts_save_and_reports_character(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, reference = root / "input", root / "reference"
+            populate_input(source)
+            populate_reference(reference)
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve().parents[1] / "des_save_converter.py"),
+                    "--input", str(source), "--reference", str(reference), "--output", str(root / "output"),
+                ],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("mobus", result.stdout)
+            self.assertIn("Knight", result.stdout)
 
 
 if __name__ == "__main__":
