@@ -27,21 +27,21 @@ class ConverterApp(tk.Tk):
         self.reference_var = tk.StringVar()
         self.output_var = tk.StringVar()
         self.status_var = tk.StringVar(
-            value="Vyberte neúplný save a funkční save jako šablonu."
+            value="Select an incomplete save and a working save to use as the template."
         )
 
         frame = ttk.Frame(self, padding=16)
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(1, weight=1)
 
-        ttk.Label(frame, text="Demon’s Souls — převod saveu pro KytyPS5", font=("Segoe UI", 13, "bold")).grid(
+        ttk.Label(frame, text="Demon’s Souls — KytyPS5 save converter", font=("Segoe UI", 13, "bold")).grid(
             row=0, column=0, columnspan=3, sticky="w", pady=(0, 16)
         )
-        self._path_row(frame, 1, "Neúplný save:", self.input_var, self._choose_input)
-        self._path_row(frame, 2, "Funkční reference:", self.reference_var, self._choose_reference)
-        self._path_row(frame, 3, "Výstupní složka:", self.output_var, self._choose_output)
+        self._path_row(frame, 1, "Incomplete save:", self.input_var, self._choose_input)
+        self._path_row(frame, 2, "Working reference:", self.reference_var, self._choose_reference)
+        self._path_row(frame, 3, "Output folder:", self.output_var, self._choose_output)
 
-        self.convert_button = ttk.Button(frame, text="Převést save", command=self.start_conversion)
+        self.convert_button = ttk.Button(frame, text="Convert save", command=self.start_conversion)
         self.convert_button.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(12, 10))
 
         self.status_label = ttk.Label(
@@ -50,7 +50,7 @@ class ConverterApp(tk.Tk):
         self.status_label.grid(row=5, column=0, columnspan=3, sticky="w")
         ttk.Label(
             frame,
-            text="Originální soubory zůstanou beze změny. Výstup musí být nová nebo prázdná složka.",
+            text="Original files remain unchanged. The output must be a new or empty folder.",
             foreground="#777777",
         ).grid(row=6, column=0, columnspan=3, sticky="w", pady=(12, 0))
 
@@ -59,24 +59,24 @@ class ConverterApp(tk.Tk):
         ttk.Entry(parent, textvariable=variable).grid(
             row=row, column=1, sticky="ew", padx=8, pady=4
         )
-        ttk.Button(parent, text="Vybrat…", command=command).grid(
+        ttk.Button(parent, text="Browse…", command=command).grid(
             row=row, column=2, pady=4
         )
 
     def _choose_input(self):
-        selected = filedialog.askdirectory(title="Vyberte neúplný save")
+        selected = filedialog.askdirectory(title="Select the incomplete save")
         if selected:
             self.input_var.set(selected)
             if not self.output_var.get().strip():
                 self.output_var.set(str(default_output_path(Path(selected))))
 
     def _choose_reference(self):
-        selected = filedialog.askdirectory(title="Vyberte funkční referenční save")
+        selected = filedialog.askdirectory(title="Select the working reference save")
         if selected:
             self.reference_var.set(selected)
 
     def _choose_output(self):
-        selected = filedialog.askdirectory(title="Vyberte novou nebo prázdnou výstupní složku")
+        selected = filedialog.askdirectory(title="Select a new or empty output folder")
         if selected:
             self.output_var.set(selected)
 
@@ -88,11 +88,11 @@ class ConverterApp(tk.Tk):
             for variable in (self.input_var, self.reference_var, self.output_var)
         )
         if not all(paths):
-            self._set_status("Nejprve vyplňte všechny tři cesty.", error=True)
+            self._set_status("Select all three paths first.", error=True)
             return
         self.converting = True
         self.convert_button.configure(state="disabled")
-        self._set_status("Převádím save…")
+        self._set_status("Converting save…")
         threading.Thread(target=self._convert_worker, args=paths, daemon=True).start()
         self.after(100, self._poll_result)
 
@@ -102,12 +102,12 @@ class ConverterApp(tk.Tk):
         except (ConversionError, OSError) as error:
             self.results.put((False, str(error)))
         except Exception as error:
-            self.results.put((False, f"Neočekávaná chyba: {error}"))
+            self.results.put((False, f"Unexpected error: {error}"))
         else:
             self.results.put((
                 True,
-                f"Hotovo: {character.name}, {character.class_name}, "
-                f"Soul Level {character.soul_level}\nUloženo do: {output_path}",
+                f"Done: {character.name}, {character.class_name}, "
+                f"Soul Level {character.soul_level}\nSaved to: {output_path}",
             ))
 
     def _poll_result(self):

@@ -1,25 +1,25 @@
 # DeS Save Converter
 
-Jednoduchý nástroj pro Windows, který z neúplného saveu **Demon’s Souls Remake (PPSA01341)** vytvoří kompletní strukturu pro **KytyPS5**. Doplní chybějící `sce_sys` metadata, ale samotný herní postup nezmění.
+A simple Windows tool that converts an incomplete **Demon’s Souls Remake (PPSA01341)** save into the complete save structure for **KytyPS5**. It adds the missing `sce_sys` metadata without changing game progress.
 
-> Nástroj pracuje pouze s už dešifrovanými `USR-DATA`. Nešifruje, nedešifruje a nepřepodpisovává PS5 savey.
+> The tool only works with already-decrypted `USR-DATA` files. It does not encrypt, decrypt, or re-sign PS5 saves.
 
-## Rychlý start — hotový program
+## Quick start — prebuilt application
 
-1. Stáhněte `DeSSaveConverter.exe` z [nejnovějšího release](https://github.com/Hammanek/des-save-converter/releases/latest).
-2. Spusťte program. Python není potřeba.
-3. Vyberte:
-   - **Neúplný save** — složku obsahující `SAVEDATA0PlayerProfile0` a `SAVEDATA0OptionsProfile0` s pouhými `USR-DATA`.
-   - **Funkční reference** — jiný funkční save téže hry, který má kompletní složky `sce_sys`.
-   - **Výstupní složka** — novou nebo prázdnou složku pro výsledek.
-4. Stiskněte **Převést save**.
-5. Hotovou výstupní složku použijte jako `PPSA01341` v uložených datech KytyPS5.
+1. Download `DeSSaveConverter.exe` from the [latest release](https://github.com/Hammanek/des-save-converter/releases/latest).
+2. Run the application. Python is not required.
+3. Select:
+   - **Incomplete save** — the folder containing `SAVEDATA0PlayerProfile0` and `SAVEDATA0OptionsProfile0` with only `USR-DATA` files.
+   - **Working reference** — another working save from the same game that has complete `sce_sys` folders.
+   - **Output folder** — a new or empty folder for the converted save.
+4. Click **Convert save**.
+5. Use the completed output folder as `PPSA01341` in your KytyPS5 save data.
 
-Reference se používá pouze jako zdroj ikony, velikosti bloků a šablony metadat. Výsledný `param.bin` se vytvoří podle skutečného jména, třídy a Soul Levelu postavy ze vstupního saveu.
+The reference supplies only the icon, block sizes, and metadata templates. The output `param.bin` is generated from the actual character name, class, and Soul Level in the input save.
 
-## Příklad
+## Example
 
-Vstup:
+Input:
 
 ```text
 PPSA01341_before_repair/
@@ -27,7 +27,7 @@ PPSA01341_before_repair/
 └── SAVEDATA0OptionsProfile0/USR-DATA
 ```
 
-Výstup:
+Output:
 
 ```text
 PPSA01341_converted/
@@ -45,44 +45,44 @@ PPSA01341_converted/
         └── param.bin
 ```
 
-## Bezpečnost
+## Safety
 
-- Originální i referenční save zůstávají beze změny.
-- Oba `USR-DATA` jsou bajt po bajtu identické se vstupem.
-- Program ověřuje verzi hlavičky, délku dat a FNV-1a kontrolní součet.
-- Poškozený nebo neznámý formát je odmítnut.
-- Výsledek se nejprve vytváří v dočasné složce a po kontrole se teprve přesune do cíle.
-- Neprázdná výstupní složka se nikdy nepřepíše.
-- Přesto je vhodné mít vlastní zálohu saveu.
+- The input and reference saves are never modified.
+- Both output `USR-DATA` files are byte-for-byte identical to the input.
+- The header version, payload size, and FNV-1a checksum are validated.
+- Corrupt or unsupported data is rejected.
+- Conversion is staged in a temporary folder and published only after verification.
+- A non-empty output folder is never overwritten.
+- Keeping your own save backup is still recommended.
 
-## Omezení
+## Limitations
 
-- Podporován je pozorovaný formát `USR-DATA` verze 7 a `param.bin` používaný v KytyPS5.
-- Neznámou lokaci a čas hraní nástroj do metadat nevymýšlí.
-- Program neřeší šifrování saveů, vlastnictví PSN účtu ani přenos mezi účty.
-- Úspěšná kontrola souborů nenahrazuje vyzkoušení načtení ve hře. Kompatibilita samotné hry/emulátoru je mimo rozsah nástroje.
+- Supports the observed `USR-DATA` version 7 and the `param.bin` layout used by KytyPS5.
+- Unknown location and playtime are not invented for generated metadata.
+- The tool does not handle save encryption, PSN account ownership, or transfers between accounts.
+- File validation is not a substitute for loading the save in the game. Game and emulator compatibility is outside the tool’s scope.
 
-## Kontrola staženého souboru
+## Verify the download
 
-Release obsahuje také `DeSSaveConverter.exe.sha256`. Hash lokálního souboru získáte v PowerShellu:
+The release also includes `DeSSaveConverter.exe.sha256`. Get the local file hash in PowerShell:
 
 ```powershell
 (Get-FileHash .\DeSSaveConverter.exe -Algorithm SHA256).Hash
 ```
 
-Porovnejte jej s hashem uvedeným v `.sha256` souboru.
+Compare it with the hash in the `.sha256` file.
 
-## Spuštění ze zdrojového kódu
+## Run from source
 
-Vyžaduje Python 3.10 nebo novější; běhové závislosti nejsou potřeba.
+Python 3.10 or newer is required. There are no runtime dependencies.
 
-Grafické rozhraní:
+GUI:
 
 ```powershell
 python des_save_gui.py
 ```
 
-Příkazová řádka:
+Command line:
 
 ```powershell
 python des_save_converter.py `
@@ -91,27 +91,27 @@ python des_save_converter.py `
   --output "PPSA01341_converted"
 ```
 
-## Testy
+## Tests
 
 ```powershell
 python -m unittest discover -s tests -v
 ```
 
-Testy používají dočasné syntetické savey. Neukládají do repozitáře žádná uživatelská herní data.
+Tests use temporary synthetic saves. No user game data is included in the repository.
 
-## Vytvoření Windows executable
+## Build the Windows executable
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
-Skript vytvoří izolované `.venv-build`, nainstaluje PyInstaller a vytvoří:
+The script creates an isolated `.venv-build`, installs PyInstaller, and produces:
 
 ```text
 dist/DeSSaveConverter.exe
 dist/DeSSaveConverter.exe.sha256
 ```
 
-## Licence
+## License
 
-MIT — viz [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).
